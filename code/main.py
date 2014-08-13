@@ -23,7 +23,7 @@ if __name__ == "__main__":
 	import argparse
 	parser = argparse.ArgumentParser(description = 'Train an sklearn algorithm and/or apply it to make predictions')
 	parser.add_argument('id', type=str, help='Unique id for saving/loading the model from pickle file')
-	parser.add_argument('--preprocess', type=str, help=': separated list of features to process')
+	#parser.add_argument('--preprocess', type=str, help=': separated list of features to process')
 	parser.add_argument('--train', type=str, help='Name of sklearn algorithm')
 	parser.add_argument('--test', action='store_true', help='Load model from id and apply to test data')
 	parser.add_argument('--subject', type=str, help='Run over a single subject only')
