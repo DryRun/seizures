@@ -73,7 +73,10 @@ def Preprocess(subject):
 						power = ft[i]**2
 					else:
 						power = ft[2*i]**2 + ft[(2*i)-1]**2
-					segment_features["electrode" + str(column_name) + "_f" + str(round(freq, 2)) + "Hz"] = power / total_power
+					if total_power > 0:
+						segment_features["electrode" + str(column_name) + "_f" + str(round(freq, 2)) + "Hz"] = power / total_power
+					else:
+						segment_features["electrode" + str(column_name) + "_f" + str(round(freq, 2)) + "Hz"] = 0.
 				# End loop of FFT frequencies
 			# End if-else loop rejecting "time"
 		# End loop over electrodes
