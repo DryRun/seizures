@@ -10,6 +10,7 @@ import random
 import scipy.fftpack as fft
 from math import *
 from joblib import Parallel, delayed
+import pyeeg as pyeeg
 
 
 def Preprocess(subject):
@@ -26,7 +27,7 @@ def Preprocess(subject):
 	first = True
 	counter = 0
 	for segment_name in input_data.items:
-		if counter % 1000 == 0:
+		if counter % 100 == 0:
 			print "\tSegment " + str(counter) + " / " + str(len(input_data.items))
 		counter += 1
 		if first:
@@ -37,6 +38,7 @@ def Preprocess(subject):
 				if column_name == "time":
 					continue
 				features.append("electrode" + str(column_name) + "_variance")
+				features.append("electrode" + str(column_name) + "_hfd20")
 				n_samples = len(input_data[segment_name][column_name])
 				sampling_frequency = n_samples / 1.
 				fft_length = int(2**(ceil(log(n_samples) / log(2))))
@@ -55,6 +57,14 @@ def Preprocess(subject):
 			else:
 				# Variance
 				segment_features["electrode" + str(column_name) + "_variance"] = np.var(input_data[segment_name][column_name])
+
+				# Higuchi fractal dimension
+				c_hfd20 = pyeeg.hfd2(input_data[segment_name][column_name], 20)
+				if np.isnan(c_hfd20):
+					segment_features["electrode" + str(column_name) + "_hfd20"] = 1.
+				else:
+					segment_features["electrode" + str(column_name) + "_hfd20"] = c_hfd20
+				#segment_features["electrode" + str(column_name) + "_hfd30"] = pyeeg.hfd(input_data[segment_name][column_name], 30)
 
 				# Row data = readings vs. time
 				n_samples = len(input_data[segment_name][column_name])
