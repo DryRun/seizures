@@ -20,6 +20,8 @@ import pickle as pickle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import BaggingClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn import cross_validation
+from sklearn import metrics
 
 # Location of preprocessed data
 input_data_paths = {}
@@ -260,17 +262,23 @@ def PredictKNeighbors(p_subject, p_save):
 def TrainRandomForestSimultaneous(p_subject, p_save):
 	print "Welcome to TrainRandomForestSimultaneous(" + p_subject + ", " + str(p_save) + ")"
 	training_data = pd.read_pickle(input_data_paths[p_subject])
+	n_features = len(training_data.index) - 2
 
 	# Ictal vs interictal
-	forest_simultaneous = RandomForestClassifier(n_estimators = 1000, n_jobs = 1, max_features="sqrt", max_depth=None, min_samples_split=1)
+	max_features = int(ceil(sqrt(n_features) * 2.5))
+	forest_simultaneous = RandomForestClassifier(n_estimators = 1000, n_jobs = 1, max_features=max_features, max_depth=None, min_samples_split=2)
 	y_seizure = training_data.T["classification"]
 	forest_simultaneous.fit(training_data[:-2].T, y_seizure)
 
 	# Save model
 	if p_save:
-		saved_files = joblib.dump(forest_simultaneous, "RFS_" + p_subject + ".pkl")
-		for saved_file in saved_files:
-			os.system("mv " + saved_file + " /Users/dryu/Documents/DataScience/Seizures/data/models")
+		model_save_filename = "/Users/dryu/Documents/DataScience/Seizures/data/models/RFS_" + p_subject + ".pkl"
+		model_save_file = open(model_save_filename, 'w')
+		pickle.dump(forest_simultaneous, model_save_file)
+		model_save_file.close()
+		#saved_files = joblib.dump(forest_simultaneous, "RFS_" + p_subject + ".pkl")
+		#for saved_file in saved_files:
+		#	os.system("mv " + saved_file + " /Users/dryu/Documents/DataScience/Seizures/data/models")
 
 	return {"simultaneous":forest_simultaneous}
 
@@ -282,7 +290,9 @@ def PredictRandomForestSimultaneous(p_subject, p_save):
 		print "save=False)"
 
 	# Load models
-	forest_simultaneous = joblib.load("/Users/dryu/Documents/DataScience/Seizures/data/models/RFS_" + p_subject + ".pkl")
+	model_save_file = open("/Users/dryu/Documents/DataScience/Seizures/data/models/RFS_" + p_subject + ".pkl", 'r')
+	forest_simultaneous = pickle.load(model_save_file)
+	model_save_file.close()
 
 	# Load test data
 	test_data = pd.read_pickle(test_data_paths[p_subject])
@@ -307,6 +317,76 @@ def PredictRandomForestSimultaneous(p_subject, p_save):
 		os.system("mv " + "RFS_" + p_subject + ".pkl" + " /Users/dryu/Documents/DataScience/Seizures/data/predictions")
 
 	return predict_df
+
+def CrossValidateRandomForestSimultaneous(p_subject):
+	feature_factors = [1., 1.5, 2.0, 2.5, 3.0]
+	depths = [4, 10, None]
+	min_samples_split_list = [1, 2, 4]
+	#print "Welcome to CrossValidateRandomForestSimultaneous(" + p_subject + ")"
+	input_data = pd.read_pickle(input_data_paths[p_subject])
+	n_features = len(input_data.index) - 2
+	training_data = input_data[:-2].T
+	target_data = np.array([x for x in input_data.T["classification"]])
+	for feature_factor in feature_factors:
+		for depth in depths:
+			for min_samples_split in min_samples_split_list:
+				print "Feature factor = " + str(feature_factor) + " / depth = " + str(depth) + " / min_samples_split = " + str(min_samples_split)
+				c_max_features = int(ceil(sqrt(n_features) * feature_factor))
+				forest_simultaneous = RandomForestClassifier(n_estimators = 500, n_jobs = 4, max_features=c_max_features, max_depth=depth, min_samples_split=min_samples_split)
+
+				#Simple K-Fold cross validation. 10 folds.
+				#print training_data.shape
+				#print target_data.shape
+				cv = cross_validation.KFold(len(training_data.index), n_folds=10, shuffle=True)
+
+				#iterate through the training and test cross validation segments and
+				#run the classifier on each one, aggregating the results into a list
+				results = []
+				for traincv, testcv in cv:
+					#print traincv
+					model = forest_simultaneous.fit(training_data.T[traincv].T, target_data[traincv])
+					probas = model.predict_proba(training_data.T[testcv].T)
+					late_index = -1
+					early_index = -1
+					for index in xrange(len(forest_simultaneous.classes_)):
+						if forest_simultaneous.classes_[index] == 1:
+							late_index = index
+						if forest_simultaneous.classes_[index] == 2:
+							early_index = index
+
+					target_data_seizure = []
+					target_data_valid = [False, False]
+					for x in target_data[testcv]:
+						if x > 0:
+							target_data_seizure.append(1)
+							target_data_valid[0] = True
+						else:
+							target_data_seizure.append(0)
+							target_data_valid[1] = True
+					if not (target_data_valid[0] and target_data_valid[1]):
+						print "Invalid seizure target truth data"
+						continue
+					target_data_early = []
+					target_data_valid = [False, False]
+					for x in target_data[testcv]:
+						if x > 1:
+							target_data_early.append(1)
+							target_data_valid[0] = True							
+						else:
+							target_data_early.append(0)
+							target_data_valid[1] = True							
+					if not (target_data_valid[0] and target_data_valid[1]):
+						print "Invalid early target truth data"
+						continue
+					rocauc_seizure = metrics.roc_auc_score(target_data_seizure, [x[early_index] + x[late_index] for x in probas])
+					rocauc_early = metrics.roc_auc_score(target_data_early, [x[early_index] for x in probas])
+					results.append(0.33333 * rocauc_seizure + 0.66666 * rocauc_early)
+				#for result in results:
+				#	print "\t" + p_subject + " score = " + str(result)
+				avg = 0.
+				for result in results:
+					avg += result / len(results)
+				print "\t" + p_subject + " mean score = " + str(avg)
 
 
 def MakeSubmission(p_method):
@@ -334,6 +414,7 @@ if __name__ == "__main__":
 	parser.add_argument('--submission', type=str, help='Format predictions for a submission')
 	parser.add_argument('--subject', type=str, help='Run over a single subject only')
 	parser.add_argument('--singly', action='store_true', help='Run single jobs, rather than parallel')
+	parser.add_argument('--cv', type=str, help='Cross-validate an algorithm')
 	args = parser.parse_args()
 
 	# Specify subjects
@@ -380,4 +461,8 @@ if __name__ == "__main__":
 	if args.submission:
 		MakeSubmission(args.submission)
 
+	if args.cv:
+		if args.cv == "RFS":
+			for subject in subjects:
+				CrossValidateRandomForestSimultaneous(subject)
 

@@ -39,6 +39,7 @@ def Preprocess(subject):
 					continue
 				features.append("electrode" + str(column_name) + "_variance")
 				features.append("electrode" + str(column_name) + "_hfd20")
+				features.append("electrode" + str(column_name) + "_hfd40")
 				n_samples = len(input_data[segment_name][column_name])
 				sampling_frequency = n_samples / 1.
 				fft_length = int(2**(ceil(log(n_samples) / log(2))))
@@ -64,6 +65,12 @@ def Preprocess(subject):
 					segment_features["electrode" + str(column_name) + "_hfd20"] = 1.
 				else:
 					segment_features["electrode" + str(column_name) + "_hfd20"] = c_hfd20
+
+				c_hfd40 = pyeeg.hfd2(input_data[segment_name][column_name], 40)
+				if np.isnan(c_hfd40):
+					segment_features["electrode" + str(column_name) + "_hfd40"] = 1.
+				else:
+					segment_features["electrode" + str(column_name) + "_hfd40"] = c_hfd40
 				#segment_features["electrode" + str(column_name) + "_hfd30"] = pyeeg.hfd(input_data[segment_name][column_name], 30)
 
 				# Row data = readings vs. time
